@@ -75,7 +75,17 @@ export default function Home() {
     );
   }
 
-  const view = config.view === "dashboard" ? "dashboard" : "3d-office";
+  // The Village view only exists when the config declares buildings; a saved
+  // "village" view without them falls back to the office.
+  const hasVillage = (config.buildings?.length ?? 0) > 0;
+  const view: "dashboard" | "village" | "3d-office" =
+    config.view === "dashboard"
+      ? "dashboard"
+      : config.view === "village" && hasVillage
+        ? "village"
+        : "3d-office";
+  const viewTabs = hasVillage ? (["3d-office", "village", "dashboard"] as const) : (["3d-office", "dashboard"] as const);
+  const viewLabels = { "3d-office": "Office", village: "Village", dashboard: "Dashboard" } as const;
 
   const setView = (nextView: string) => {
     const nextConfig = { ...config, view: nextView };
@@ -100,7 +110,7 @@ export default function Home() {
               borderRadius: 6,
             }}
           >
-            {(["3d-office", "dashboard"] as const).map((v) => (
+            {viewTabs.map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -115,7 +125,7 @@ export default function Home() {
                   transition: "background var(--t-fast) var(--ease), color var(--t-fast) var(--ease)",
                 }}
               >
-                {v === "3d-office" ? "Office" : "Dashboard"}
+                {viewLabels[v]}
               </button>
             ))}
           </div>
@@ -160,6 +170,7 @@ export default function Home() {
               selectedRoom={selectedRoom}
               onSelectRoom={setSelectedRoom}
               onAttentionChange={setAttention}
+              scene={view === "village" ? "village" : "office"}
             />
           )}
 

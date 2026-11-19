@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { DioramaScene } from "./scene/DioramaScene";
 import { Room3D } from "./scene/Room3D";
 import { Building3D } from "./scene/Building3D";
+import { VillageEnvironment } from "./village/VillageEnvironment";
 import { AgentFigure3D } from "./scene/AgentFigure3D";
 import { useGatewayEvents } from "@/hooks/useGatewayEvents";
 import { useMockEventSource } from "@/hooks/useMockEventSource";
@@ -80,9 +81,11 @@ interface LiveViewProps {
   selectedRoom?: string | null;
   /** Reports the set of agents currently blocked waiting for the user. */
   onAttentionChange?: (entries: AttentionEntry[]) => void;
+  /** "office" (default) = the original scene; "village" = daylight outdoors with terrain and scenery. */
+  scene?: "office" | "village";
 }
 
-export function LiveView({ config, onSelectRoom, selectedRoom, onAttentionChange }: LiveViewProps) {
+export function LiveView({ config, onSelectRoom, selectedRoom, onAttentionChange, scene = "office" }: LiveViewProps) {
   const { eventBus, status, connect } = useGatewayEvents();
   const colors = THEME_COLORS[config.theme] ?? THEME_COLORS["neon-dark"];
 
@@ -549,7 +552,15 @@ export function LiveView({ config, onSelectRoom, selectedRoom, onAttentionChange
       {/* Activity feed */}
       <ActivityFeed entries={feedEntries} />
 
-      <DioramaScene theme={config.theme} center={roomsCenter} fitRadius={fitRadius}>
+      <DioramaScene theme={config.theme} center={roomsCenter} fitRadius={fitRadius} environment={scene}>
+        {scene === "village" && (
+          <VillageEnvironment
+            rooms={config.rooms}
+            buildings={config.buildings ?? []}
+            center={roomsCenter}
+            fitRadius={fitRadius}
+          />
+        )}
         <Building3D rooms={config.rooms} buildings={config.buildings ?? []} />
         {config.rooms.map((room, i) => (
           <Room3D

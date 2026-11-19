@@ -6,6 +6,10 @@ export type { DioramaConfig, RoomConfig, RoomColors, AgentAssignment, SourceConf
 export { groupRoomsByBuilding, buildingBounds, findBuildingOfRoom } from "./buildings";
 export type { BuildingGroup, GridBounds } from "./buildings";
 
+// Village exterior (terrain scenery, footprints)
+export { mulberry32, buildingWorldRects, scatterScenery } from "./village";
+export type { WorldRect, SceneryKind, SceneryPoint, ScatterOptions } from "./village";
+
 // Plugins
 export {
   PluginRegistry,

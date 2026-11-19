@@ -16,6 +16,8 @@ const THEMES: Record<string, typeof neonDarkTheme> = {
 
 /** Farthest the camera may sit; sized so a multi-building village still fits. */
 const MAX_CAMERA_DISTANCE = 130;
+/** Sky and horizon color of the village (fog fades the ground into it). */
+export const VILLAGE_SKY = "#c9bbf2";
 /** Fit radius (world units) up to which the default fog range is kept as-is. */
 const FOG_BASE_RADIUS = 14;
 
@@ -62,10 +64,12 @@ interface DioramaSceneProps {
   center?: [number, number, number];
   /** World-space bounding radius of the content — used to frame the camera. */
   fitRadius?: number;
+  /** "office" = the original dark, gridded scene; "village" = daylight outdoors (no grid). */
+  environment?: "office" | "village";
   children: React.ReactNode;
 }
 
-export function DioramaScene({ theme, center, fitRadius, children }: DioramaSceneProps) {
+export function DioramaScene({ theme, center, fitRadius, environment = "office", children }: DioramaSceneProps) {
   const sceneConfig = useMemo(() => {
     const base = createSceneConfig();
     const themePlugin = THEMES[theme] ?? neonDarkTheme;
@@ -75,6 +79,7 @@ export function DioramaScene({ theme, center, fitRadius, children }: DioramaScen
   // Large worlds (villages) sit farther from the camera: widen fog and the
   // far plane in proportion so distant buildings are not swallowed by fog.
   const fogScale = Math.max(1, (fitRadius ?? 0) / FOG_BASE_RADIUS);
+  const isVillage = environment === "village";
 
   const initPos = center
     ? [center[0], 20, center[2] + 15] as [number, number, number]
@@ -91,24 +96,42 @@ export function DioramaScene({ theme, center, fitRadius, children }: DioramaScen
       style={{ width: "100%", height: "100%" }}
     >
       {center && <CameraSync center={center} fitRadius={fitRadius} />}
-      <color attach="background" args={[sceneConfig.background]} />
-      <fog attach="fog" args={[sceneConfig.fog.color, sceneConfig.fog.near * fogScale, sceneConfig.fog.far * fogScale]} />
-      <ambientLight color={sceneConfig.ambientLight.color} intensity={sceneConfig.ambientLight.intensity} />
-      {sceneConfig.directionalLights.map((light, i) => (
-        <directionalLight
-          key={i}
-          position={light.position}
-          color={light.color}
-          intensity={light.intensity}
-        />
-      ))}
+      <color attach="background" args={[isVillage ? VILLAGE_SKY : sceneConfig.background]} />
+      <fog
+        attach="fog"
+        args={[
+          isVillage ? VILLAGE_SKY : sceneConfig.fog.color,
+          sceneConfig.fog.near * fogScale,
+          sceneConfig.fog.far * fogScale,
+        ]}
+      />
+      {isVillage ? (
+        <>
+          {/* Soft daylight: warm sun plus a violet fill for VIOLET's identity */}
+          <ambientLight color="#fff6ee" intensity={0.85} />
+          <directionalLight position={[30, 50, 20]} color="#fff1d6" intensity={1.0} />
+          <directionalLight position={[-25, 20, -30]} color="#cdb8ff" intensity={0.35} />
+        </>
+      ) : (
+        <>
+          <ambientLight color={sceneConfig.ambientLight.color} intensity={sceneConfig.ambientLight.intensity} />
+          {sceneConfig.directionalLights.map((light, i) => (
+            <directionalLight
+              key={i}
+              position={light.position}
+              color={light.color}
+              intensity={light.intensity}
+            />
+          ))}
+        </>
+      )}
       <OrbitControls
         target={center ?? [0, 0, 0]}
         maxPolarAngle={Math.PI / 2.2}
         minDistance={5}
         maxDistance={MAX_CAMERA_DISTANCE + 10}
       />
-      <gridHelper args={[50, 50, "#222233", "#181828"]} position={[0, -0.01, 0]} />
+      {!isVillage && <gridHelper args={[50, 50, "#222233", "#181828"]} position={[0, -0.01, 0]} />}
       {children}
     </Canvas>
   );
