@@ -6,7 +6,7 @@ import { parseConfig } from "@diorama/engine";
 const TEMPLATES_DIR = path.resolve(__dirname, "../../../templates");
 
 describe("template validation", () => {
-  const templates = ["starter", "full-office", "minimal"];
+  const templates = ["starter", "full-office", "minimal", "village"];
 
   for (const name of templates) {
     describe(`${name} template`, () => {

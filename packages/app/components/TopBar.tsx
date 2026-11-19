@@ -40,7 +40,7 @@ export function TopBar({
         }}
       >
         <span aria-hidden style={{ color: "var(--accent)", fontSize: 14, lineHeight: 1 }}>◆</span>
-        <span style={{ fontSize: 13, fontWeight: 650, letterSpacing: "0.01em" }}>Diorama</span>
+        <span style={{ fontSize: 13, fontWeight: 650, letterSpacing: "0.01em" }}>VIOLET</span>
       </a>
       <div>{center}</div>
       <div style={{ justifySelf: "end", display: "flex", alignItems: "center", gap: 8 }}>{actions}</div>

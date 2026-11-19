@@ -6,6 +6,8 @@ export interface RoomPlacement {
   label: string;
   colors?: { accent?: string; floor?: string; wall?: string };
   floorStyle?: "solid" | "grid-tiles" | "wood-planks" | "hex-tiles" | "carpet";
+  /** Id of the village building this room belongs to (preserved across edits). */
+  building?: string;
   furniture?: Array<{
     geometry: "box" | "cylinder" | "sphere" | "plane";
     size: [number, number, number];

@@ -85,7 +85,7 @@ export function Welcome() {
           A 3D world for your AI agents
         </h1>
         <p style={{ color: "var(--ink-2)", margin: "0 0 32px", maxWidth: "42ch" }}>
-          Diorama turns your invisible agents into little figures in an office you design:
+          VIOLET turns your invisible agents into little figures in an office you design:
           live, on a screen you can glance at.
         </p>
 

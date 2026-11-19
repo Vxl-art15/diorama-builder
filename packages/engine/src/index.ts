@@ -1,6 +1,10 @@
 // Config
 export { parseConfig, DioramaConfigError } from "./config";
-export type { DioramaConfig, RoomConfig, RoomColors, AgentAssignment, SourceConfig } from "./config";
+export type { DioramaConfig, RoomConfig, RoomColors, AgentAssignment, SourceConfig, BuildingConfig } from "./config";
+
+// Village buildings
+export { groupRoomsByBuilding, buildingBounds, findBuildingOfRoom } from "./buildings";
+export type { BuildingGroup, GridBounds } from "./buildings";
 
 // Plugins
 export {

@@ -14,6 +14,11 @@ const THEMES: Record<string, typeof neonDarkTheme> = {
   "minimal": minimalTheme,
 };
 
+/** Farthest the camera may sit; sized so a multi-building village still fits. */
+const MAX_CAMERA_DISTANCE = 130;
+/** Fit radius (world units) up to which the default fog range is kept as-is. */
+const FOG_BASE_RADIUS = 14;
+
 /**
  * Distance the camera needs to frame a world of the given bounding radius.
  * Derived from the vertical FOV with a margin; clamped to OrbitControls'
@@ -22,7 +27,7 @@ const THEMES: Record<string, typeof neonDarkTheme> = {
 export function fitCameraDistance(radius: number, fovDegrees: number): number {
   const fov = (fovDegrees * Math.PI) / 180;
   const distance = (radius * 1.25) / Math.tan(fov / 2);
-  return Math.min(Math.max(distance, 8), 55);
+  return Math.min(Math.max(distance, 8), MAX_CAMERA_DISTANCE);
 }
 
 /** Syncs camera + OrbitControls to center on rooms and fit their extent */
@@ -67,6 +72,10 @@ export function DioramaScene({ theme, center, fitRadius, children }: DioramaScen
     return applyTheme(base, themePlugin);
   }, [theme]);
 
+  // Large worlds (villages) sit farther from the camera: widen fog and the
+  // far plane in proportion so distant buildings are not swallowed by fog.
+  const fogScale = Math.max(1, (fitRadius ?? 0) / FOG_BASE_RADIUS);
+
   const initPos = center
     ? [center[0], 20, center[2] + 15] as [number, number, number]
     : sceneConfig.camera.position;
@@ -77,13 +86,13 @@ export function DioramaScene({ theme, center, fitRadius, children }: DioramaScen
         position: initPos,
         fov: sceneConfig.camera.fov,
         near: sceneConfig.camera.near,
-        far: sceneConfig.camera.far,
+        far: Math.max(sceneConfig.camera.far, MAX_CAMERA_DISTANCE * 3),
       }}
       style={{ width: "100%", height: "100%" }}
     >
       {center && <CameraSync center={center} fitRadius={fitRadius} />}
       <color attach="background" args={[sceneConfig.background]} />
-      <fog attach="fog" args={[sceneConfig.fog.color, sceneConfig.fog.near, sceneConfig.fog.far]} />
+      <fog attach="fog" args={[sceneConfig.fog.color, sceneConfig.fog.near * fogScale, sceneConfig.fog.far * fogScale]} />
       <ambientLight color={sceneConfig.ambientLight.color} intensity={sceneConfig.ambientLight.intensity} />
       {sceneConfig.directionalLights.map((light, i) => (
         <directionalLight
@@ -97,7 +106,7 @@ export function DioramaScene({ theme, center, fitRadius, children }: DioramaScen
         target={center ?? [0, 0, 0]}
         maxPolarAngle={Math.PI / 2.2}
         minDistance={5}
-        maxDistance={60}
+        maxDistance={MAX_CAMERA_DISTANCE + 10}
       />
       <gridHelper args={[50, 50, "#222233", "#181828"]} position={[0, -0.01, 0]} />
       {children}

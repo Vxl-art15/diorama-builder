@@ -1,0 +1,21 @@
+{
+  "name": "VIOLET Village",
+  "gateway": { "url": "", "token": "" },
+  "view": "3d-office",
+  "theme": "neon-dark",
+  "sources": [{ "type": "ingest" }],
+  "buildings": [
+    { "id": "estudio", "name": "Estudio", "color": "#a78bfa", "description": "Proyecto creativo" },
+    { "id": "tienda", "name": "Tienda", "color": "#f59e0b", "description": "Negocio de venta" },
+    { "id": "laboratorio", "name": "Laboratorio", "color": "#34d399", "description": "Investigación y pruebas" }
+  ],
+  "rooms": [
+    { "preset": "meeting", "position": [0, 0], "size": [4, 3], "label": "Estudio · Reuniones", "building": "estudio" },
+    { "preset": "workspace", "position": [4, 0], "size": [5, 4], "label": "Estudio · Taller", "building": "estudio" },
+    { "preset": "social", "position": [13, 0], "size": [3, 3], "label": "Tienda · Mostrador", "building": "tienda" },
+    { "preset": "private", "position": [16, 0], "size": [2, 2], "label": "Tienda · Oficina", "building": "tienda" },
+    { "preset": "lab", "position": [3, 8], "size": [4, 4], "label": "Laboratorio · Pruebas", "building": "laboratorio" },
+    { "preset": "meeting", "position": [7, 8], "size": [4, 3], "label": "Laboratorio · Sala", "building": "laboratorio" }
+  ],
+  "agents": {}
+}

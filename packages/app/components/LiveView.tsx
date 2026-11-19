@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { DioramaScene } from "./scene/DioramaScene";
 import { Room3D } from "./scene/Room3D";
+import { Building3D } from "./scene/Building3D";
 import { AgentFigure3D } from "./scene/AgentFigure3D";
 import { useGatewayEvents } from "@/hooks/useGatewayEvents";
 import { useMockEventSource } from "@/hooks/useMockEventSource";
@@ -549,6 +550,7 @@ export function LiveView({ config, onSelectRoom, selectedRoom, onAttentionChange
       <ActivityFeed entries={feedEntries} />
 
       <DioramaScene theme={config.theme} center={roomsCenter} fitRadius={fitRadius}>
+        <Building3D rooms={config.rooms} buildings={config.buildings ?? []} />
         {config.rooms.map((room, i) => (
           <Room3D
             key={`${room.preset}-${i}`}
