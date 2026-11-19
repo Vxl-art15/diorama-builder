@@ -2,19 +2,87 @@
 
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
+import { fbm2D, smoothstep, terrainHeight, GROUND_Y, type TerrainOptions } from "@diorama/engine";
 
-/** Ground disc, far larger than any view so the fog (not an edge) ends the world. */
-const GROUND_RADIUS = 420;
-const GROUND_Y = -0.12;
-const GROUND_COLOR = "#9fd19a";
+const RINGS = 80;
+const SEGMENTS = 144;
 
+const GRASS_A = new THREE.Color("#a6e085");
+const GRASS_B = new THREE.Color("#bdeb8c");
+const MEADOW = new THREE.Color("#d6f4a0");
+const DRY = new THREE.Color("#dde59a");
+const HILL = new THREE.Color("#74bc84");
+const HILL_LIGHT = new THREE.Color("#8ad08c");
+
+const _c = new THREE.Color();
+
+/** Grass color at a point: patchy lawn, a sunlit meadow near the village, cooler on the hills. */
+function groundColor(x: number, z: number, d: number, rise: number, o: TerrainOptions, out: THREE.Color): THREE.Color {
+  const patch = fbm2D(x * 0.028, z * 0.028, o.seed + 21, 3);
+  out.copy(GRASS_A).lerp(GRASS_B, patch);
+  const dry = smoothstep(0.6, 0.82, fbm2D(x * 0.05, z * 0.05, o.seed + 33, 2));
+  out.lerp(DRY, dry * 0.45);
+  const meadow = 1 - smoothstep(o.flatRadius * 0.85, o.flatRadius * 1.7, d);
+  out.lerp(MEADOW, meadow * 0.55);
+  const hill = smoothstep(1, 11, rise);
+  _c.copy(HILL).lerp(HILL_LIGHT, patch);
+  out.lerp(_c, hill * 0.8);
+  return out;
+}
+
+/**
+ * Polar grid: rings are dense near the village and spread out toward the
+ * horizon, so detail goes where the camera looks. Heights come from the
+ * engine's terrainHeight (flat core, rolling hills beyond).
+ */
+function buildTerrain(o: TerrainOptions, radius: number): THREE.BufferGeometry {
+  const vertexCount = (RINGS + 1) * (SEGMENTS + 1);
+  const positions = new Float32Array(vertexCount * 3);
+  const colors = new Float32Array(vertexCount * 3);
+  const uvs = new Float32Array(vertexCount * 2);
+  const c = new THREE.Color();
+  let v = 0;
+  for (let i = 0; i <= RINGS; i++) {
+    const r = radius * Math.pow(i / RINGS, 1.7);
+    for (let j = 0; j <= SEGMENTS; j++) {
+      const a = (j / SEGMENTS) * Math.PI * 2;
+      const x = o.center[0] + r * Math.cos(a);
+      const z = o.center[1] + r * Math.sin(a);
+      const y = terrainHeight(x, z, o);
+      positions.set([x, y, z], v * 3);
+      groundColor(x, z, r, y - GROUND_Y, o, c);
+      colors.set([c.r, c.g, c.b], v * 3);
+      uvs.set([x / 7, z / 7], v * 2);
+      v++;
+    }
+  }
+  const indices: number[] = [];
+  const stride = SEGMENTS + 1;
+  for (let i = 0; i < RINGS; i++) {
+    for (let j = 0; j < SEGMENTS; j++) {
+      const a = i * stride + j;
+      const b = (i + 1) * stride + j;
+      // Wound so the face normal points up (+y).
+      indices.push(a, a + 1, b, a + 1, b + 1, b);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  g.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+  g.setIndex(indices);
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Soft mottled grayscale: multiplies the vertex colors to break up flat color. */
 function makeGrassTexture(): THREE.CanvasTexture {
   const size = 256;
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = GROUND_COLOR;
+  ctx.fillStyle = "#f2f2f2";
   ctx.fillRect(0, 0, size, size);
   // Deterministic speckle (no Math.random → identical on every load).
   let seed = 1337;
@@ -22,10 +90,10 @@ function makeGrassTexture(): THREE.CanvasTexture {
     seed = (seed * 1664525 + 1013904223) >>> 0;
     return seed / 4294967296;
   };
-  for (let i = 0; i < 900; i++) {
-    const light = rand() > 0.5;
-    ctx.fillStyle = light ? "rgba(255,255,255,0.10)" : "rgba(40,90,60,0.10)";
-    const r = 1 + rand() * 3;
+  for (let i = 0; i < 1100; i++) {
+    const dark = rand() > 0.45;
+    ctx.fillStyle = dark ? "rgba(70,120,70,0.10)" : "rgba(255,255,255,0.5)";
+    const r = 1 + rand() * 3.2;
     ctx.beginPath();
     ctx.arc(rand() * size, rand() * size, r, 0, Math.PI * 2);
     ctx.fill();
@@ -33,59 +101,36 @@ function makeGrassTexture(): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(GROUND_RADIUS / 5, GROUND_RADIUS / 5);
+  tex.anisotropy = 4;
   return tex;
 }
 
-function makeClearingTexture(): THREE.CanvasTexture {
-  const size = 256;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  g.addColorStop(0, "rgba(214,240,190,0.95)");
-  g.addColorStop(0.65, "rgba(214,240,190,0.55)");
-  g.addColorStop(1, "rgba(214,240,190,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  return new THREE.CanvasTexture(canvas);
-}
-
 interface Terrain3DProps {
-  /** World-space center of the village (x, z) */
-  center: [number, number];
-  /** Radius of the lighter clearing around the village, in world units */
-  clearingRadius: number;
+  options: TerrainOptions;
+  /** Ground radius; larger than the fog distance so haze, not an edge, ends the world */
+  radius: number;
 }
 
 /**
- * Village ground: a huge grass disc with a soft lighter clearing under the
- * buildings. Purely decorative: no pointer handlers, so room selection and
- * editor interactions are unaffected.
+ * Village ground: flat under the buildings, rolling hills beyond, painted per
+ * vertex (patchy lawn, sunlit meadow, cooler hillsides) with a faint mottled
+ * texture. Purely decorative: no pointer handlers.
  */
-export function Terrain3D({ center, clearingRadius }: Terrain3DProps) {
+export function Terrain3D({ options, radius }: Terrain3DProps) {
+  const geometry = useMemo(() => buildTerrain(options, radius), [options, radius]);
   const grass = useMemo(makeGrassTexture, []);
-  const clearing = useMemo(makeClearingTexture, []);
   useEffect(
     () => () => {
+      geometry.dispose();
       grass.dispose();
-      clearing.dispose();
     },
-    [grass, clearing],
+    [geometry, grass],
   );
 
   return (
-    <group position={[center[0], 0, center[1]]}>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, GROUND_Y, 0]}>
-        <circleGeometry args={[GROUND_RADIUS, 64]} />
-        {/* `as never`: two copies of three's types are in play (same workaround as Room3D) */}
-        <meshStandardMaterial map={grass as never} roughness={1} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, GROUND_Y + 0.01, 0]}>
-        <planeGeometry args={[clearingRadius * 2, clearingRadius * 2]} />
-        <meshStandardMaterial map={clearing as never} transparent depthWrite={false} roughness={1} />
-      </mesh>
-    </group>
+    <mesh geometry={geometry as never} receiveShadow>
+      {/* `as never`: two copies of three's types are in play (same workaround as Room3D) */}
+      <meshStandardMaterial vertexColors map={grass as never} roughness={1} />
+    </mesh>
   );
 }

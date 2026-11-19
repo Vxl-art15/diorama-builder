@@ -6,6 +6,11 @@ import { useEffect, useMemo, useRef } from "react";
 import { createSceneConfig } from "@diorama/engine";
 import { applyTheme, neonDarkTheme, warmOfficeTheme, cyberpunkTheme, minimalTheme } from "@diorama/plugins";
 import * as THREE from "three";
+import { fitCameraDistance, MAX_CAMERA_DISTANCE } from "./cameraFit";
+import { VILLAGE_FOV, VILLAGE_HORIZON, villageFog } from "../village/atmosphere";
+
+// Re-exported so existing importers (the builder's 3D view) keep working.
+export { fitCameraDistance };
 
 const THEMES: Record<string, typeof neonDarkTheme> = {
   "neon-dark": neonDarkTheme,
@@ -14,23 +19,8 @@ const THEMES: Record<string, typeof neonDarkTheme> = {
   "minimal": minimalTheme,
 };
 
-/** Farthest the camera may sit; sized so a multi-building village still fits. */
-const MAX_CAMERA_DISTANCE = 130;
-/** Sky and horizon color of the village (fog fades the ground into it). */
-export const VILLAGE_SKY = "#c9bbf2";
 /** Fit radius (world units) up to which the default fog range is kept as-is. */
 const FOG_BASE_RADIUS = 14;
-
-/**
- * Distance the camera needs to frame a world of the given bounding radius.
- * Derived from the vertical FOV with a margin; clamped to OrbitControls'
- * min/max distance range.
- */
-export function fitCameraDistance(radius: number, fovDegrees: number): number {
-  const fov = (fovDegrees * Math.PI) / 180;
-  const distance = (radius * 1.25) / Math.tan(fov / 2);
-  return Math.min(Math.max(distance, 8), MAX_CAMERA_DISTANCE);
-}
 
 /** Syncs camera + OrbitControls to center on rooms and fit their extent */
 function CameraSync({ center, fitRadius }: { center: [number, number, number]; fitRadius?: number }) {
@@ -64,7 +54,12 @@ interface DioramaSceneProps {
   center?: [number, number, number];
   /** World-space bounding radius of the content — used to frame the camera. */
   fitRadius?: number;
-  /** "office" = the original dark, gridded scene; "village" = daylight outdoors (no grid). */
+  /**
+   * "office" = the original dark, gridded scene with OrbitControls.
+   * "village" = outdoors: the children supply their own lights, camera and
+   * sky (see VillageEnvironment); this component only provides the canvas,
+   * shadows and fog.
+   */
   environment?: "office" | "village";
   children: React.ReactNode;
 }
@@ -76,43 +71,44 @@ export function DioramaScene({ theme, center, fitRadius, environment = "office",
     return applyTheme(base, themePlugin);
   }, [theme]);
 
-  // Large worlds (villages) sit farther from the camera: widen fog and the
-  // far plane in proportion so distant buildings are not swallowed by fog.
+  // Large worlds sit farther from the camera: widen fog and the far plane in
+  // proportion so distant buildings are not swallowed by fog.
   const fogScale = Math.max(1, (fitRadius ?? 0) / FOG_BASE_RADIUS);
   const isVillage = environment === "village";
+  const villageFogRange = isVillage ? villageFog(fitRadius ?? 12) : null;
 
   const initPos = center
     ? [center[0], 20, center[2] + 15] as [number, number, number]
     : sceneConfig.camera.position;
 
   return (
+    // `key`: switching Office <-> Village remounts the canvas, so shadows,
+    // lights and camera framing always start clean for that view.
     <Canvas
+      key={environment}
+      shadows={isVillage ? "soft" : false}
+      // The village is painted with its own palette: no tone mapping, so the
+      // colors read as designed instead of being muted by ACES.
+      flat={isVillage}
       camera={{
         position: initPos,
-        fov: sceneConfig.camera.fov,
-        near: sceneConfig.camera.near,
-        far: Math.max(sceneConfig.camera.far, MAX_CAMERA_DISTANCE * 3),
+        fov: isVillage ? VILLAGE_FOV : sceneConfig.camera.fov,
+        near: isVillage ? 0.5 : sceneConfig.camera.near,
+        far: isVillage ? 2600 : Math.max(sceneConfig.camera.far, MAX_CAMERA_DISTANCE * 3),
       }}
       style={{ width: "100%", height: "100%" }}
     >
-      {center && <CameraSync center={center} fitRadius={fitRadius} />}
-      <color attach="background" args={[isVillage ? VILLAGE_SKY : sceneConfig.background]} />
+      {!isVillage && center && <CameraSync center={center} fitRadius={fitRadius} />}
+      <color attach="background" args={[isVillage ? VILLAGE_HORIZON : sceneConfig.background]} />
       <fog
         attach="fog"
-        args={[
-          isVillage ? VILLAGE_SKY : sceneConfig.fog.color,
-          sceneConfig.fog.near * fogScale,
-          sceneConfig.fog.far * fogScale,
-        ]}
+        args={
+          villageFogRange
+            ? [VILLAGE_HORIZON, villageFogRange.near, villageFogRange.far]
+            : [sceneConfig.fog.color, sceneConfig.fog.near * fogScale, sceneConfig.fog.far * fogScale]
+        }
       />
-      {isVillage ? (
-        <>
-          {/* Soft daylight: warm sun plus a violet fill for VIOLET's identity */}
-          <ambientLight color="#fff6ee" intensity={0.85} />
-          <directionalLight position={[30, 50, 20]} color="#fff1d6" intensity={1.0} />
-          <directionalLight position={[-25, 20, -30]} color="#cdb8ff" intensity={0.35} />
-        </>
-      ) : (
+      {!isVillage && (
         <>
           <ambientLight color={sceneConfig.ambientLight.color} intensity={sceneConfig.ambientLight.intensity} />
           {sceneConfig.directionalLights.map((light, i) => (
@@ -123,15 +119,15 @@ export function DioramaScene({ theme, center, fitRadius, environment = "office",
               intensity={light.intensity}
             />
           ))}
+          <OrbitControls
+            target={center ?? [0, 0, 0]}
+            maxPolarAngle={Math.PI / 2.2}
+            minDistance={5}
+            maxDistance={MAX_CAMERA_DISTANCE + 10}
+          />
+          <gridHelper args={[50, 50, "#222233", "#181828"]} position={[0, -0.01, 0]} />
         </>
       )}
-      <OrbitControls
-        target={center ?? [0, 0, 0]}
-        maxPolarAngle={Math.PI / 2.2}
-        minDistance={5}
-        maxDistance={MAX_CAMERA_DISTANCE + 10}
-      />
-      {!isVillage && <gridHelper args={[50, 50, "#222233", "#181828"]} position={[0, -0.01, 0]} />}
       {children}
     </Canvas>
   );

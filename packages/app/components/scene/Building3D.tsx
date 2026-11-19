@@ -14,6 +14,8 @@ const DEFAULT_COLOR = "#8090c0";
 interface Building3DProps {
   rooms: Pick<RoomConfig, "building" | "position" | "size">[];
   buildings: BuildingConfig[];
+  /** "village" = warm stone plaza and a light sign for daylight scenes; "office" = the original dark look */
+  tone?: "office" | "village";
 }
 
 /**
@@ -22,7 +24,8 @@ interface Building3DProps {
  * never interferes with room selection or the editor's ground plane.
  * Renders nothing when no buildings are declared.
  */
-export function Building3D({ rooms, buildings }: Building3DProps) {
+export function Building3D({ rooms, buildings, tone = "office" }: Building3DProps) {
+  const village = tone === "village";
   const plazas = useMemo(() => {
     if (buildings.length === 0) return [];
     const { groups } = groupRoomsByBuilding(rooms, buildings);
@@ -53,21 +56,21 @@ export function Building3D({ rooms, buildings }: Building3DProps) {
           {/* Accent rim */}
           <mesh position={[p.center[0], -0.06, p.center[1]]}>
             <boxGeometry args={[p.width + RIM * 2, 0.03, p.depth + RIM * 2]} />
-            <meshStandardMaterial color={p.color} emissive={p.color} emissiveIntensity={0.35} roughness={0.8} />
+            <meshStandardMaterial color={p.color} emissive={p.color} emissiveIntensity={village ? 0.12 : 0.35} roughness={0.8} />
           </mesh>
           {/* Plaza */}
-          <mesh position={[p.center[0], -0.04, p.center[1]]}>
+          <mesh position={[p.center[0], -0.04, p.center[1]]} receiveShadow={village}>
             <boxGeometry args={[p.width, 0.05, p.depth]} />
-            <meshStandardMaterial color="#141c2b" roughness={0.95} />
+            <meshStandardMaterial color={village ? "#e2d2b2" : "#141c2b"} roughness={0.95} />
           </mesh>
           <Html position={[p.center[0], 0.2, p.signZ + 0.4]} center style={{ pointerEvents: "none" }}>
             <div
               style={{
                 padding: "4px 12px",
                 borderRadius: 999,
-                background: "rgba(13,21,32,0.88)",
+                background: village ? "rgba(255,249,240,0.95)" : "rgba(13,21,32,0.88)",
                 border: `1.5px solid ${p.color}`,
-                color: "#fff",
+                color: village ? "#3a2d57" : "#fff",
                 fontSize: 15,
                 fontWeight: 650,
                 letterSpacing: "0.02em",

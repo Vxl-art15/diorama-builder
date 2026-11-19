@@ -1,108 +1,154 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import type { SceneryPoint } from "@diorama/engine";
+import type { SceneryPlan, TreeType } from "@diorama/engine";
+import {
+  bushGeometry,
+  flowerHeadGeometry,
+  flowerStemGeometry,
+  mushroomCapGeometry,
+  mushroomStemGeometry,
+  pineGeometry,
+  roundTreeGeometry,
+  rockGeometry,
+  tuftGeometry,
+  umbrellaTreeGeometry,
+} from "./sceneryGeometry";
 
-/** Where trees touch the ground (matches Terrain3D's ground height + a little sink). */
-const GROUND_Y = -0.1;
+/** Sink plants a touch so they never float on slopes. */
+const SINK = 0.05;
 
-const TRUNK_COLOR = new THREE.Color("#8a6a52");
-const PINE_COLORS = [new THREE.Color("#4f9d78"), new THREE.Color("#3f8f86")];
-const CROWN_COLORS = [
-  new THREE.Color("#8ad1a0"),
-  new THREE.Color("#f2a7c7"), // blossom
-  new THREE.Color("#a58be0"), // violet, VIOLET's signature tree
-];
-const BUSH_COLOR = new THREE.Color("#79bf8d");
+const FLOWER_COLORS = ["#ffd166", "#f78fb3", "#fff7ee", "#c4a8ff"].map((c) => new THREE.Color(c));
+const CAP_COLORS = ["#ff8fa3", "#ffbf6b", "#c9a6ff"].map((c) => new THREE.Color(c));
 
-const _m = new THREE.Matrix4();
-const _q = new THREE.Quaternion();
 const _p = new THREE.Vector3();
+const _q = new THREE.Quaternion();
 const _s = new THREE.Vector3();
+const _m = new THREE.Matrix4();
+const UP = new THREE.Vector3(0, 1, 0);
 
-function place(mesh: THREE.InstancedMesh, i: number, x: number, y: number, z: number, sx: number, sy: number, sz: number, color: THREE.Color) {
-  _p.set(x, y, z);
-  _s.set(sx, sy, sz);
-  _m.compose(_p, _q, _s);
-  mesh.setMatrixAt(i, _m);
-  mesh.setColorAt(i, color);
+interface Item {
+  x: number;
+  y: number;
+  z: number;
+  sx: number;
+  sy: number;
+  sz: number;
+  ry: number;
+  color?: THREE.Color;
+}
+
+const grey = (tint: number, lo = 0.88, span = 0.22) => {
+  const g = lo + tint * span;
+  return new THREE.Color(g, g, g);
+};
+
+interface InstancedProps {
+  geometry: THREE.BufferGeometry;
+  items: Item[];
+  castShadow?: boolean;
+}
+
+/** One InstancedMesh: a single draw call for every copy of a plant. */
+function Instanced({ geometry, items, castShadow = false }: InstancedProps) {
+  const ref = useRef<THREE.InstancedMesh>(null);
+
+  useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    items.forEach((it, i) => {
+      _p.set(it.x, it.y, it.z);
+      _q.setFromAxisAngle(UP, it.ry);
+      _s.set(it.sx, it.sy, it.sz);
+      _m.compose(_p, _q, _s);
+      mesh.setMatrixAt(i, _m);
+      if (it.color) mesh.setColorAt(i, it.color);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, [items]);
+
+  if (items.length === 0) return null;
+  return (
+    // `as never`: two copies of three's types are in play (same workaround as Room3D)
+    <instancedMesh ref={ref} args={[geometry as never, undefined, items.length]} castShadow={castShadow} frustumCulled={false}>
+      <meshStandardMaterial vertexColors flatShading roughness={0.88} />
+    </instancedMesh>
+  );
 }
 
 interface Scenery3DProps {
-  points: SceneryPoint[];
+  plan: SceneryPlan;
+  /** Ground height at a world position, so every plant sits on the terrain */
+  heightAt: (x: number, z: number) => number;
 }
 
 /**
- * Trees and bushes as three InstancedMeshes (trunks, pine cones, round
- * crowns/bushes), so even a few hundred plants cost three draw calls.
+ * Draws a SceneryPlan: five tree species, bushes, flowers, mushrooms, rocks
+ * and grass tufts. Each kind is one InstancedMesh with a baked-color model,
+ * so the whole forest costs about a dozen draw calls.
  */
-export function Scenery3D({ points }: Scenery3DProps) {
-  const trunks = useRef<THREE.InstancedMesh>(null);
-  const cones = useRef<THREE.InstancedMesh>(null);
-  const blobs = useRef<THREE.InstancedMesh>(null);
+export function Scenery3D({ plan, heightAt }: Scenery3DProps) {
+  const models = useMemo(
+    () => ({
+      pine: pineGeometry(),
+      round: roundTreeGeometry("#86d094"),
+      blossom: roundTreeGeometry("#f7b3d1"),
+      violet: roundTreeGeometry("#b79cf0"),
+      umbrella: umbrellaTreeGeometry(),
+      bush: bushGeometry(),
+      stem: flowerStemGeometry(),
+      head: flowerHeadGeometry(),
+      mStem: mushroomStemGeometry(),
+      mCap: mushroomCapGeometry(),
+      rock: rockGeometry(),
+      tuft: tuftGeometry(),
+    }),
+    [],
+  );
+  useEffect(
+    () => () => {
+      Object.values(models).forEach((g) => g.dispose());
+    },
+    [models],
+  );
 
-  const counts = useMemo(() => {
-    let pine = 0;
-    let round = 0;
-    let bush = 0;
-    for (const p of points) {
-      if (p.kind === 0) pine++;
-      else if (p.kind === 1) round++;
-      else bush++;
+  const items = useMemo(() => {
+    const trees = {} as Record<TreeType, Item[]>;
+    for (const t of ["pine", "round", "blossom", "violet", "umbrella"] as TreeType[]) trees[t] = [];
+    for (const t of plan.trees) {
+      trees[t.type].push({ x: t.x, y: heightAt(t.x, t.z) - SINK, z: t.z, sx: t.scale, sy: t.scale, sz: t.scale, ry: t.rot, color: grey(t.tint) });
     }
-    return { trunks: pine + round, cones: pine, blobs: round + bush };
-  }, [points]);
-
-  useLayoutEffect(() => {
-    const t = trunks.current;
-    const c = cones.current;
-    const b = blobs.current;
-    if (!t || !c || !b) return;
-    let ti = 0;
-    let ci = 0;
-    let bi = 0;
-    const tmp = new THREE.Color();
-    for (const p of points) {
-      const s = p.scale;
-      if (p.kind === 0) {
-        const trunkH = 1.2 * s;
-        place(t, ti++, p.x, GROUND_Y + trunkH / 2, p.z, 0.2 * s, trunkH, 0.2 * s, TRUNK_COLOR);
-        const coneH = 3 * s;
-        tmp.copy(PINE_COLORS[p.tint < 0.5 ? 0 : 1]).offsetHSL(0, 0, (p.tint - 0.5) * 0.08);
-        place(c, ci++, p.x, GROUND_Y + trunkH * 0.8 + coneH / 2, p.z, 0.95 * s, coneH, 0.95 * s, tmp);
-      } else if (p.kind === 1) {
-        const trunkH = 1.4 * s;
-        place(t, ti++, p.x, GROUND_Y + trunkH / 2, p.z, 0.22 * s, trunkH, 0.22 * s, TRUNK_COLOR);
-        const crown = CROWN_COLORS[Math.min(2, Math.floor(p.tint * 3))];
-        place(b, bi++, p.x, GROUND_Y + trunkH + 0.5 * s, p.z, 1.4 * s, 1.2 * s, 1.4 * s, crown);
-      } else {
-        place(b, bi++, p.x, GROUND_Y + 0.5 * s, p.z, 0.9 * s, 0.6 * s, 0.9 * s, BUSH_COLOR);
-      }
-    }
-    t.count = ti;
-    c.count = ci;
-    b.count = bi;
-    for (const m of [t, c, b]) {
-      m.instanceMatrix.needsUpdate = true;
-      if (m.instanceColor) m.instanceColor.needsUpdate = true;
-    }
-  }, [points]);
+    const bushes = plan.bushes.map((b) => ({ x: b.x, y: heightAt(b.x, b.z) - SINK, z: b.z, sx: b.scale, sy: b.scale, sz: b.scale, ry: b.rot, color: grey(b.tint) }));
+    // Small plants are scaled up so they read as intentional patches from the
+    // default camera distance instead of as specks.
+    const FLOWER = 2.0;
+    const MUSHROOM = 1.7;
+    const stems = plan.flowers.map((f) => ({ x: f.x, y: heightAt(f.x, f.z) - SINK, z: f.z, sx: 1.5, sy: f.scale * FLOWER, sz: 1.5, ry: 0 }));
+    const heads = plan.flowers.map((f) => ({ x: f.x, y: heightAt(f.x, f.z) - SINK, z: f.z, sx: f.scale * FLOWER, sy: f.scale * FLOWER, sz: f.scale * FLOWER, ry: 0, color: FLOWER_COLORS[f.color] }));
+    const mStems = plan.mushrooms.map((m) => ({ x: m.x, y: heightAt(m.x, m.z) - SINK, z: m.z, sx: m.scale * MUSHROOM, sy: m.scale * MUSHROOM, sz: m.scale * MUSHROOM, ry: 0 }));
+    const mCaps = plan.mushrooms.map((m) => ({ x: m.x, y: heightAt(m.x, m.z) - SINK, z: m.z, sx: m.scale * MUSHROOM, sy: m.scale * MUSHROOM, sz: m.scale * MUSHROOM, ry: 0, color: CAP_COLORS[m.cap] }));
+    const rocks = plan.rocks.map((r) => ({ x: r.x, y: heightAt(r.x, r.z) - 0.1, z: r.z, sx: r.scale, sy: r.scale * 0.9, sz: r.scale * 1.1, ry: r.rot, color: grey(0.5) }));
+    const tufts = plan.tufts.map((t) => ({ x: t.x, y: heightAt(t.x, t.z) - SINK, z: t.z, sx: t.scale * 1.4, sy: t.scale * 1.4, sz: t.scale * 1.4, ry: t.rot, color: grey(t.tint, 0.9, 0.2) }));
+    return { trees, bushes, stems, heads, mStems, mCaps, rocks, tufts };
+  }, [plan, heightAt]);
 
   return (
     <group>
-      <instancedMesh ref={trunks} args={[undefined, undefined, Math.max(1, counts.trunks)]} frustumCulled={false}>
-        <cylinderGeometry args={[1, 1, 1, 6]} />
-        <meshStandardMaterial flatShading roughness={1} />
-      </instancedMesh>
-      <instancedMesh ref={cones} args={[undefined, undefined, Math.max(1, counts.cones)]} frustumCulled={false}>
-        <coneGeometry args={[1, 1, 7]} />
-        <meshStandardMaterial flatShading roughness={0.9} />
-      </instancedMesh>
-      <instancedMesh ref={blobs} args={[undefined, undefined, Math.max(1, counts.blobs)]} frustumCulled={false}>
-        <icosahedronGeometry args={[1, 1]} />
-        <meshStandardMaterial flatShading roughness={0.9} />
-      </instancedMesh>
+      <Instanced geometry={models.pine} items={items.trees.pine} castShadow />
+      <Instanced geometry={models.round} items={items.trees.round} castShadow />
+      <Instanced geometry={models.blossom} items={items.trees.blossom} castShadow />
+      <Instanced geometry={models.violet} items={items.trees.violet} castShadow />
+      <Instanced geometry={models.umbrella} items={items.trees.umbrella} castShadow />
+      {/* Only trees cast shadows: bushes and rocks are small, and every caster is drawn twice. */}
+      <Instanced geometry={models.bush} items={items.bushes} />
+      <Instanced geometry={models.stem} items={items.stems} />
+      <Instanced geometry={models.head} items={items.heads} />
+      <Instanced geometry={models.mStem} items={items.mStems} />
+      <Instanced geometry={models.mCap} items={items.mCaps} />
+      <Instanced geometry={models.rock} items={items.rocks} />
+      <Instanced geometry={models.tuft} items={items.tufts} />
     </group>
   );
 }

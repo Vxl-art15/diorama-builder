@@ -561,14 +561,16 @@ export function LiveView({ config, onSelectRoom, selectedRoom, onAttentionChange
             fitRadius={fitRadius}
           />
         )}
-        <Building3D rooms={config.rooms} buildings={config.buildings ?? []} />
+        <Building3D rooms={config.rooms} buildings={config.buildings ?? []} tone={scene} />
         {config.rooms.map((room, i) => (
           <Room3D
             key={`${room.preset}-${i}`}
             room={room}
             accentColor={colors.accent}
-            floorColor={colors.floor}
-            themeId={config.theme}
+            // Village: warm floors so the rooms don't read as dark office boxes
+            // under the daylight (real facades and interiors come in later steps).
+            floorColor={scene === "village" ? "#dcc8a2" : colors.floor}
+            themeId={scene === "village" ? "warm-office" : config.theme}
             selected={selectedRoom === room.label}
             glowIntensity={roomGlows[i] ?? 0}
             onPointerUp={() => onSelectRoom?.(room.label === selectedRoom ? null : room.label)}

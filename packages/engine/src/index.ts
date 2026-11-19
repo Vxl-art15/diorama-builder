@@ -7,8 +7,23 @@ export { groupRoomsByBuilding, buildingBounds, findBuildingOfRoom } from "./buil
 export type { BuildingGroup, GridBounds } from "./buildings";
 
 // Village exterior (terrain scenery, footprints)
-export { mulberry32, buildingWorldRects, scatterScenery } from "./village";
-export type { WorldRect, SceneryKind, SceneryPoint, ScatterOptions } from "./village";
+export { mulberry32, buildingWorldRects, composeScenery, FIREFLY_COUNT } from "./village";
+export type {
+  WorldRect,
+  TreeType,
+  TreePoint,
+  BushPoint,
+  FlowerPoint,
+  MushroomPoint,
+  RockPoint,
+  TuftPoint,
+  FireflyPoint,
+  SceneryPlan,
+  ComposeOptions,
+} from "./village";
+export { smoothstep, hash2, valueNoise2D, fbm2D } from "./noise";
+export { terrainHeight, GROUND_Y } from "./terrain";
+export type { TerrainOptions } from "./terrain";
 
 // Plugins
 export {
